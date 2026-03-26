@@ -27,6 +27,6 @@ jobs:
         # Ici on lie tes secrets GitHub aux variables que le code Python va lire
         env:
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
-          GOOGLE_SPREADSHEET_ID: ${{ secrets.GOOGLE_SPREADSHEET_ID }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SPREADSHEET_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python main.py
