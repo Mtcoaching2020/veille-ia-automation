@@ -1,0 +1,32 @@
+name: Routine Veille IA Matinale
+
+# Déclencheurs : quand le script doit-il s'exécuter ?
+on:
+  schedule:
+    - cron: '0 8 * * *' # Tous les jours à 8h00 UTC
+  workflow_dispatch:    # Ajoute un bouton "Play" manuel sur GitHub
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest # On demande à GitHub de nous prêter un ordi Linux
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4 # On télécharge ton projet sur cet ordi
+
+      - name: Installer Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Installer les dépendances
+        run: |
+          pip install --upgrade pip
+          pip install pytrends gspread google-auth newspaper3k python-dotenv lxml_html_clean google-generativeai feedparser googlenewsdecoder
+
+      - name: Lancer la veille
+        # Ici on lie tes secrets GitHub aux variables que le code Python va lire
+        env:
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+          GOOGLE_SPREADSHEET_ID: ${{ secrets.GOOGLE_SPREADSHEET_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python main.py
