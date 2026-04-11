@@ -1,0 +1,8 @@
+gspread
+google-auth
+pytrends
+python-dotenv
+google-generativeai
+feedparser
+requests
+beautifulsoup4
