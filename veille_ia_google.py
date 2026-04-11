@@ -43,12 +43,10 @@ def connexion_google_sheets():
         auth_data = "google_sheets_credentials.json"
 
     try:
-        # Test GitHub Cloud (Secret JSON)
         creds_dict = json.loads(auth_data)
         creds = Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
         print("☁️ Connexion GitHub Cloud réussie.")
     except Exception:
-        # Test Local (Fichier .json)
         if os.path.exists(auth_data):
             creds = Credentials.from_service_account_file(auth_data, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
             print(f"🏠 Connexion locale ({auth_data}) réussie.")
@@ -58,114 +56,85 @@ def connexion_google_sheets():
     return gspread.authorize(creds)
 
 def recuperer_news_rss():
-    """Récupère les dernières actus via les flux RSS des sites de ta liste"""
-    print("🌐 Récupération des flux RSS Tech (Liste personnalisée)...")
+    """Récupère les 5 dernières actus de 12 sources françaises références"""
+    print("🌐 Scan des 12 sources françaises (5 articles par flux)...")
     flux_urls = [
         "https://www.lemondeinformatique.fr/flux-rss/thematique/intelligence-artificielle/rss.xml",
         "https://www.journaldunet.com/rss/it/intelligence-artificielle/",
         "https://www.presse-citron.net/tag/intelligence-artificielle/feed/",
-        "https://www.usine-digitale.fr/ia/rss", # L'Usine Digitale - IA
-        "https://www.zdnet.fr/feeds/rss/actualites/it-management-39000735q.htm", # ZDNet
-        "https://www.silicon.fr/feed", # Silicon.fr
-        "https://www.it-connect.fr/feed/", # IT Connect
-        "https://intelligence-artificielle.com/feed/" # Site dédié IA
+        "https://www.usine-digitale.fr/ia/rss",
+        "https://www.zdnet.fr/feeds/rss/actualites/it-management-39000735q.htm",
+        "https://www.silicon.fr/feed",
+        "https://www.actuia.com/flux/",
+        "https://siecledigital.fr/intelligence-artificielle/feed/",
+        "https://www.numerama.com/t/intelligence-artificielle/feed/",
+        "https://www.futura-sciences.com/tech/intelligence-artificielle/rss.xml",
+        "https://intelligence-artificielle.com/feed/",
+        "https://www.it-connect.fr/feed/"
     ]
     
     articles_rss = []
     for url in flux_urls:
         try:
             feed = feedparser.parse(url)
-            # On prend l'article le plus récent de chaque source pour varier au maximum
-            if feed.entries:
-                entry = feed.entries[0]
+            # ICI : On boucle sur les 5 derniers articles de chaque site
+            for entry in feed.entries[:5]:
                 articles_rss.append({
                     "titre": entry.title,
                     "lien": entry.link,
                     "source": "Flux RSS Tech"
                 })
         except Exception as e:
-            print(f"⚠️ Erreur RSS sur {url} : {e}")
+            print(f"⚠️ Erreur RSS sur {url}")
             
-    # On limite à 2-3 articles au total pour ne pas saturer Gemini d'un coup
-    return articles_rss[:3]
+    random.shuffle(articles_rss)
+    return articles_rss
 
 def lancer_veille():
-    print("🚀 Lancement de la veille...")
+    print("🚀 Lancement de la veille V3 (Sources élargies)...")
     gc = connexion_google_sheets()
     if not gc: return
     
-    sheet_id = os.getenv("GOOGLE_SHEET_ID")
-    if not sheet_id:
-        sheet_id = "1KXGlAy0jf6kDU_tewvKO7CKlq-Ff1hC-NPriAvq-WIM"
+    sheet_id = os.getenv("GOOGLE_SHEET_ID", "1KXGlAy0jf6kDU_tewvKO7CKlq-Ff1hC-NPriAvq-WIM")
 
     try:
         sheet = gc.open_by_key(sheet_id).worksheet("Veille IA & Business")
         print(f"🔗 Connecté à l'onglet : Veille IA & Business")
         
-        # --- 1. COLLECTE DES NEWS (MULTI-SOURCES) ---
-        news_a_traiter = []
-        
-        # Source A : Flux RSS
-        articles_rss = recuperer_news_rss()
-        news_a_traiter.extend(articles_rss)
+        # 1. Collecte
+        news_a_traiter = recuperer_news_rss()
 
-        # Source B : Google Trends
-        try:
-            print("🔍 Recherche Google Trends...")
-            pytrends = TrendReq(hl='fr-FR', tz=360)
-            trends = pytrends.trending_searches(pn='france')[0].tolist()
-            
-            mots_cles_tech = ["IA", "AI", "Intelligence", "Tech", "Google", "Microsoft", "OpenAI", "Apple", "Nvidia"]
-            for t in trends:
-                if any(mot.lower() in t.lower() for mot in mots_cles_tech):
-                    news_a_traiter.append({"titre": t, "lien": get_google_link(t), "source": "Google Trends"})
-        except Exception as e:
-            print(f"⚠️ Google Trends indisponible. Passage à la recherche alternative.")
-
-        # Source C : Plan B "Aléatoire" (Si rien n'est trouvé)
-        if not news_a_traiter:
-            print("🎲 Utilisation du Plan B Dynamique (Recherche aléatoire)...")
-            sujets_secours = ["LLM", "Chat GPT", "Actualité IA" , "Claude"]
-            sujet_choisi = random.choice(sujets_secours)
-            news_a_traiter.append({
-                "titre": sujet_choisi, 
-                "lien": get_google_link(sujet_choisi), 
-                "source": "Recherche Secours"
-            })
-
-        # --- 2. FILTRAGE ET ANALYSE ---
-        existing_links = sheet.col_values(6) # Colonne F (Liens)
+        # 2. Paramètres de contrôle (Test bridé à 3 ajouts)
+        MAX_DEPOT = 3 
+        articles_ajoutes = 0
+        existing_links = sheet.col_values(6) 
         date_now = datetime.now().strftime("%d/%m/%Y %H:%M")
 
+        # 3. Filtrage et Analyse
         for item in news_a_traiter:
+            if articles_ajoutes >= MAX_DEPOT:
+                print(f"🛑 Quota de {MAX_DEPOT} articles atteint.")
+                break
+
             lien = item['lien']
             titre = item['titre']
-            source = item['source']
             
             if lien in existing_links:
-                print(f"⏭️ Doublon sauté : {titre}")
                 continue
 
-            print(f"✨ Analyse de : {titre} (via {source})")
+            print(f"✨ Analyse de : {titre}")
             
-            # Extraction et Analyse
             texte_article = extract_article_text(lien)
             input_ia = f"Sujet : {titre}. Contenu : {texte_article[:2500]}"
             resume_ia = analyser_avec_gemini(input_ia)
 
-            # --- 3. AJOUT AU TABLEAU ---
-            sheet.append_row([
-                date_now, 
-                source, 
-                titre, 
-                resume_ia, 
-                "À publier", 
-                lien
-            ])
+            # 4. Ajout au tableau
+            sheet.append_row([date_now, item['source'], titre, resume_ia, "À publier", lien])
             print(f"✅ Ajouté au Sheets : {titre}")
+            articles_ajoutes += 1
             time.sleep(2) 
 
-        print("✨ Mission terminée avec succès !")
+        print(f"✨ Mission terminée ! {articles_ajoutes} nouveaux articles ajoutés.")
         
     except Exception as e:
         print(f"❌ Erreur critique : {e}")
